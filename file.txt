@@ -1,0 +1,5 @@
+rag-phase0/
+├── .venv/          (created by venv, don't touch)
+├── .env            (your API key)
+├── .gitignore
+└── step1_load.py   (your first script — just load a PDF and print it)
