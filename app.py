@@ -119,5 +119,18 @@ Return only the rewritten query.
 
     return jsonify({'answer': answer, 'sources': sources})
 
+#clear
+@app.route('/clear', methods=['POST'])
+def clear():
+    session.pop('chat_history', None)
+    return jsonify({'message': 'Chat history cleared'})
+
+#status
+@app.route('/status')
+def status():
+    db = Chroma(persist_directory="chroma_db", embedding_function=embeddings)
+    count = db._collection.count()
+    return jsonify({'chunks': count})
+
 if __name__ == '__main__':
     app.run(debug=True)
