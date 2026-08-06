@@ -33,12 +33,18 @@ def upload():
     filepath = os.path.join(UPLOAD_FOLDER, file.filename)
     file.save(filepath)
 
-    loader = PyPDFLoader(filepath)
-    documents = loader.load()
-    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-    chunks = splitter.split_documents(documents)
 
     db = Chroma(persist_directory="chroma_db", embedding_function=embeddings)
+    existing = db.get(where={"source": filepath})
+    if existing and len(existing['ids']) > 0:
+        return jsonify({'message': f'{file.filename} already indexed — {len(existing["ids"])} chunks exist. Skipping.'})
+
+    loader = PyPDFLoader(filepath)
+    documents = loader.load()
+    splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
+    chunks = splitter.split_documents(documents)
+
+    
     BATCH_SIZE = 50
     for i in range(0, len(chunks), BATCH_SIZE):
         batch = chunks[i:i + BATCH_SIZE]
@@ -85,7 +91,19 @@ Return only the rewritten query.
     sources = list(set([f"{doc.metadata['source']} p.{doc.metadata['page']}" for doc in results]))
 
     prompt = ChatPromptTemplate.from_messages([
-        ("system", "Answer using only the context below. Say there is not enough information if unsure.\n\nContext: {context}"),
+    ("system", """You are a helpful study assistant for a computer science student.
+    You are given context chunks retrieved from study notes and textbooks.
+
+        Instructions:
+            - Answer clearly and concisely using only the provided context
+            - Use bullet points or numbered lists for multi-step explanations
+            - If the context contains code or algorithms, include them in your answer
+            - If the answer spans multiple topics, organize with clear headings
+            - If the context doesn't contain enough information, say exactly what is missing
+            - Always answer in simple language a student can understand
+
+    Context:
+    {context}"""),
         MessagesPlaceholder(variable_name="chat_history"),
         ("human", "{question}")
     ])
