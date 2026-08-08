@@ -7,13 +7,15 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGener
 from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
+from langchain_community.document_loaders import YoutubeLoader
+
 import os
 import time
 
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
+app.secret_key = os.getenv('SECRET_KEY')
 
 UPLOAD_FOLDER = 'docs'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
@@ -88,7 +90,10 @@ Return only the rewritten query.
     # retrieve and answer
     results = db.similarity_search(search_query, k=6)
     context = "\n\n".join([doc.page_content for doc in results])
-    sources = list(set([f"{doc.metadata['source']} p.{doc.metadata['page']}" for doc in results]))
+    sources = list(set([
+    f"{doc.metadata['source']} p.{doc.metadata.get('page', '?')}" 
+    for doc in results
+]))
 
     prompt = ChatPromptTemplate.from_messages([
     ("system", """You are a helpful study assistant for a computer science student.
@@ -119,18 +124,58 @@ Return only the rewritten query.
 
     return jsonify({'answer': answer, 'sources': sources})
 
-#clear
+#clear the histroy from existing db
 @app.route('/clear', methods=['POST'])
 def clear():
     session.pop('chat_history', None)
     return jsonify({'message': 'Chat history cleared'})
 
-#status
+#status 
 @app.route('/status')
 def status():
     db = Chroma(persist_directory="chroma_db", embedding_function=embeddings)
     count = db._collection.count()
     return jsonify({'chunks': count})
+
+
+#the youtube links from in here 
+
+
+@app.route('/add_youtube', methods=['POST'])
+def add_youtube():
+    data = request.get_json()
+    url = data.get('url')
+    if not url:
+        return jsonify({'message': 'No URL received'})
+
+    # check for duplicates
+    db = Chroma(persist_directory="chroma_db", embedding_function=embeddings)
+    existing = db.get(where={"source": url})
+    if existing and len(existing['ids']) > 0:
+        return jsonify({'message': f'This video is already indexed — {len(existing["ids"])} chunks exist.'})
+
+    # load transcript
+    try:
+        loader = YoutubeLoader.from_youtube_url(url, add_video_info=False)
+        documents = loader.load()
+    except Exception as e:
+        return jsonify({'message': 'No transcript found for this video'})
+
+    if not documents:
+        return jsonify({'message': 'No transcript found for this video'})
+
+    # same splitting, embedding, storing as PDF
+    splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
+    chunks = splitter.split_documents(documents)
+
+    BATCH_SIZE = 50
+    for i in range(0, len(chunks), BATCH_SIZE):
+        batch = chunks[i:i + BATCH_SIZE]
+        db.add_documents(batch)
+        if i + BATCH_SIZE < len(chunks):
+            time.sleep(65)
+
+    return jsonify({'message': f'Indexed {len(chunks)} chunks from YouTube video'})
 
 if __name__ == '__main__':
     app.run(debug=True)
