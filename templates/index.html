@@ -407,6 +407,76 @@
 
     #file-input { display: none; }
 
+    /* attachment menu */
+    #attach-wrap { position: relative; }
+    #attach-menu {
+      display: none;
+      position: absolute;
+      bottom: 44px;
+      left: 0;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 6px;
+      min-width: 200px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.35);
+      z-index: 50;
+    }
+    #attach-menu.show { display: block; }
+    .attach-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text-body);
+      transition: background 0.15s;
+    }
+    .attach-item:hover { background: var(--bg-hover); }
+    .attach-item .icon { font-size: 15px; width: 18px; text-align: center; }
+
+    /* youtube url bar */
+    #youtube-row {
+      display: none;
+      max-width: 720px;
+      margin: 0 auto 8px;
+      gap: 8px;
+      align-items: center;
+      background: var(--bg-input);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 10px;
+    }
+    #youtube-row.show { display: flex; }
+    #youtube-row input {
+      flex: 1;
+      background: none;
+      border: none;
+      outline: none;
+      font-size: 13px;
+      color: var(--text);
+      font-family: inherit;
+    }
+    #youtube-row input::placeholder { color: var(--text-empty); }
+    #youtube-row button {
+      background: var(--accent);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 5px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      flex-shrink: 0;
+    }
+    #youtube-row button:hover { background: var(--accent-hover); }
+    #youtube-cancel {
+      background: none !important;
+      color: var(--text-muted) !important;
+      padding: 5px 8px !important;
+    }
+
     /* upload status toast */
     #upload-toast {
       max-width: 720px;
@@ -487,14 +557,29 @@
   <div id="chat-area">
     <div id="empty-state">
       <h2>What do you want to study?</h2>
-      <p>Upload a PDF or ask a question from your indexed documents.</p>
+      <p>Upload a PDF, add a YouTube video, or ask a question from your indexed documents.</p>
     </div>
   </div>
 
   <!-- bottom input bar -->
   <div id="bottom-bar">
+    <div id="youtube-row">
+      <input type="text" id="youtube-url" placeholder="Paste a YouTube URL...">
+      <button onclick="submitYoutube()">Add</button>
+      <button id="youtube-cancel" onclick="toggleYoutubeRow(false)">✕</button>
+    </div>
     <div id="input-row">
-      <button class="bar-btn" onclick="document.getElementById('file-input').click()" title="Upload PDF">📎</button>
+      <div id="attach-wrap">
+        <button class="bar-btn" onclick="toggleAttachMenu()" title="Add source">+</button>
+        <div id="attach-menu">
+          <div class="attach-item" onclick="document.getElementById('file-input').click(); toggleAttachMenu(false)">
+            <span class="icon">📎</span> Upload PDF
+          </div>
+          <div class="attach-item" onclick="toggleYoutubeRow(true); toggleAttachMenu(false)">
+            <span class="icon">🎥</span> Add YouTube link
+          </div>
+        </div>
+      </div>
       <input type="file" id="file-input" accept=".pdf" onchange="uploadPDF(this)">
       <textarea
         id="question-input"
@@ -513,6 +598,10 @@
   // ── theme toggle ──
   function toggleTheme() {
     document.body.classList.toggle('light');
+    localStorage.setItem('theme', document.body.classList.contains('light') ? 'light' : 'dark');
+  }
+  if (localStorage.getItem('theme') === 'light') {
+    document.body.classList.add('light');
   }
 
   // ── sidebar ──
@@ -576,6 +665,48 @@
     el.innerHTML = sources.map(s =>
       `<div class="source-item">${s.replace('docs/', '')}</div>`
     ).join('');
+  }
+
+  // ── attach menu ──
+  function toggleAttachMenu(force) {
+    const menu = document.getElementById('attach-menu');
+    if (force === false) { menu.classList.remove('show'); return; }
+    menu.classList.toggle('show');
+  }
+  document.addEventListener('click', (e) => {
+    const wrap = document.getElementById('attach-wrap');
+    if (!wrap.contains(e.target)) toggleAttachMenu(false);
+  });
+
+  // ── youtube row ──
+  function toggleYoutubeRow(show) {
+    const row = document.getElementById('youtube-row');
+    row.classList.toggle('show', show);
+    if (show) document.getElementById('youtube-url').focus();
+    else document.getElementById('youtube-url').value = '';
+  }
+
+  async function submitYoutube() {
+    const input = document.getElementById('youtube-url');
+    const url = input.value.trim();
+    if (!url) return;
+
+    const toast = document.getElementById('upload-toast');
+    toast.textContent = 'Fetching transcript...';
+    toggleYoutubeRow(false);
+
+    try {
+      const res = await fetch('/add_youtube', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url })
+      });
+      const data = await res.json();
+      toast.textContent = '✓ ' + data.message;
+      setTimeout(() => toast.textContent = '', 4000);
+    } catch (e) {
+      toast.textContent = '✗ Could not add video. Try again.';
+    }
   }
 
   // ── upload PDF ──
