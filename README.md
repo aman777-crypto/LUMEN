@@ -91,5 +91,4 @@ The system searches the document, finds the relevant information and generates a
 AMAN
 
 GitHub: [aman777-crypto](https://github.com/aman777-crypto)
-website link : https://lumen-oxpx.onrender.com
 
