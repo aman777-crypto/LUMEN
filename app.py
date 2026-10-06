@@ -3,7 +3,8 @@ from flask import Flask, render_template, request, jsonify, session
 from dotenv import load_dotenv
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_groq import ChatGroq
 from langchain_chroma import Chroma
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.messages import HumanMessage, AIMessage
@@ -19,8 +20,8 @@ app.secret_key = os.getenv('SECRET_KEY')
 
 UPLOAD_FOLDER = 'docs'
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-embeddings = GoogleGenerativeAIEmbeddings(model="gemini-embedding-2-preview")
-llm = ChatGoogleGenerativeAI(model="gemini-3.5-flash")
+embeddings = HuggingFaceEmbeddings(model_name="sentence-transformers/all-MiniLM-L6-v2")
+llm = ChatGroq(model="openai/gpt-oss-120b")
 
 @app.route('/')
 def index():
@@ -159,23 +160,25 @@ def add_youtube():
         loader = YoutubeLoader.from_youtube_url(url, add_video_info=False)
         documents = loader.load()
     except Exception as e:
+        print("YouTube error:", e)
         return jsonify({'message': 'No transcript found for this video'})
 
     if not documents:
         return jsonify({'message': 'No transcript found for this video'})
 
-    # same splitting, embedding, storing as PDF
     splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=100)
     chunks = splitter.split_documents(documents)
 
+    # tag chunks with the URL so the duplicate check and sources work
+    for c in chunks:
+        c.metadata["source"] = url
+
     BATCH_SIZE = 50
     for i in range(0, len(chunks), BATCH_SIZE):
-        batch = chunks[i:i + BATCH_SIZE]
-        db.add_documents(batch)
-        if i + BATCH_SIZE < len(chunks):
-            time.sleep(65)
+        db.add_documents(chunks[i:i + BATCH_SIZE])
 
     return jsonify({'message': f'Indexed {len(chunks)} chunks from YouTube video'})
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True ,port = 5001)
+    

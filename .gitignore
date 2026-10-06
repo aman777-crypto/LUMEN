@@ -13,3 +13,8 @@ __pycache__/
 
 # Chroma DB (optional, if generated)
 chroma_db/
+.env
+.DS_Store
+chroma_db/
+docs/
+printf "\n.env\n.DS_Store\nchroma_db/\ndocs/\n" >> .gitignore
